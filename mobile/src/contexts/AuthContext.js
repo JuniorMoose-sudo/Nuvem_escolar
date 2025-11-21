@@ -1,82 +1,88 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
 
-export const AuthContext = createContext();
+const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
-  const [userToken, setUserToken] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSignout, setIsSignout] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Verifica se o usuário já está logado ao iniciar o app
-    const checkAuth = async () => {
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          setUserToken(token);
-        }
-      } catch (e) {
-        console.error("Erro ao restaurar token:", e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
+    checkAuthStatus();
   }, []);
 
-  const authContext = {
-    signIn: async (email, password) => {
-      setIsLoading(true);
-      try {
-        // O backend espera 'email', não 'username'
-        const response = await api.post('/usuarios/token/', {
-          email,
-          password,
-        });
-        const { access, refresh } = response.data;
-        
-        await AsyncStorage.setItem('accessToken', access);
-        await AsyncStorage.setItem('refreshToken', refresh);
-        
-        api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-        setUserToken(access);
-      } catch (error) {
-        console.error('Erro no signIn:', error.response?.data || error.message);
-        // Propaga o erro para a tela de Login poder exibi-lo
-        throw new Error(error.response?.data?.detail || 'Falha no login');
-      } finally {
-        setIsLoading(false);
+  const checkAuthStatus = async () => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        // Verifica se o token ainda é válido fazendo uma requisição
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        try {
+          const response = await api.get('/usuarios/me/');
+          setUser(response.data);
+          setIsAuthenticated(true);
+        } catch (error) {
+          // Token inválido, limpa o storage
+          await logout();
+        }
+      } else {
+        setIsAuthenticated(false);
       }
-    },
-    signOut: async () => {
-      setIsSignout(true);
-      try {
-        await AsyncStorage.removeItem('accessToken');
-        await AsyncStorage.removeItem('refreshToken');
-        delete api.defaults.headers.common['Authorization'];
-        setUserToken(null);
-      } catch (e) {
-        console.error("Erro no signOut:", e);
-      } finally {
-        setIsSignout(false);
-      }
-    },
-    userToken,
-    isLoading,
-    isSignout,
+    } catch (error) {
+      console.error('Erro ao verificar autenticação:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const login = async (accessToken, refreshToken, userData) => {
+    try {
+      await AsyncStorage.setItem('accessToken', accessToken);
+      await AsyncStorage.setItem('refreshToken', refreshToken);
+      api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      setUser(userData);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Erro ao fazer login:', error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await AsyncStorage.removeItem('accessToken');
+      await AsyncStorage.removeItem('refreshToken');
+      delete api.defaults.headers.common['Authorization'];
+      setUser(null);
+      setIsAuthenticated(false);
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={authContext}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        isLoading,
+        user,
+        login,
+        logout,
+        checkAuthStatus,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  }
+  return context;
 };

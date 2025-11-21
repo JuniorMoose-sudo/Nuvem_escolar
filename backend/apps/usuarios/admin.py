@@ -53,7 +53,17 @@ class CustomUsuarioAdmin(UserAdmin):
     
     filter_horizontal = ('groups', 'user_permissions',)
     
-    inlines = [PerfilProfessorInline, PerfilResponsavelInline]
+    # Inlines apenas na edição, não na criação
+    def get_inlines(self, request, obj):
+        if obj:  # Se estiver editando (obj existe)
+            # Retorna inlines baseado no tipo de usuário
+            inlines = []
+            if obj.tipo_usuario == Usuario.TipoUsuario.PROFESSOR:
+                inlines.append(PerfilProfessorInline)
+            elif obj.tipo_usuario == Usuario.TipoUsuario.RESPONSAVEL:
+                inlines.append(PerfilResponsavelInline)
+            return inlines
+        return []  # Não mostra inlines na criação
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -62,6 +72,17 @@ class CustomUsuarioAdmin(UserAdmin):
         if not is_superuser:
             form.base_fields['escola'].disabled = True
         return form
+    
+    def save_model(self, request, obj, form, change):
+        """Override para criar perfis automaticamente após salvar."""
+        super().save_model(request, obj, form, change)
+        
+        # Cria perfil automaticamente baseado no tipo de usuário
+        if not change:  # Apenas na criação
+            if obj.tipo_usuario == Usuario.TipoUsuario.PROFESSOR:
+                PerfilProfessor.objects.get_or_create(usuario=obj)
+            elif obj.tipo_usuario == Usuario.TipoUsuario.RESPONSAVEL:
+                PerfilResponsavel.objects.get_or_create(usuario=obj)
 
 # Registro dos perfis (opcional, pois já estão inline no Usuario)
 @admin.register(PerfilProfessor)

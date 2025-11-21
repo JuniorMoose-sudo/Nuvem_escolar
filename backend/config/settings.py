@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-w#=a586!eg6s@z@yz*04cr#e7)9k$c_f4($i#a%myyjuulnz9k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']  # Em desenvolvimento, permite todos os hosts
 
 
 # Application definition
@@ -138,13 +138,16 @@ SIMPLE_JWT = {
 # CORS (Cross-Origin Resource Sharing)
 # ------------------------------------------------------------------------------
 # Permite que o app mobile (Expo) acesse a API
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8081",  # Expo Web
-    "http://localhost:19006",  # Expo Web (alternativo)
-    # Adicionar domínios de produção (web e app) futuramente
-]
-# Para desenvolvimento, podemos ser mais permissivos
-# CORS_ALLOW_ALL_ORIGINS = True (Não recomendado para produção)
+# Em desenvolvimento, permite todas as origens para facilitar testes mobile
+CORS_ALLOW_ALL_ORIGINS = True  # Apenas para desenvolvimento
+CORS_ALLOW_CREDENTIALS = True
+
+# Para produção, usar apenas:
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:8081",  # Expo Web
+#     "http://localhost:19006",  # Expo Web (alternativo)
+#     # Adicionar domínios de produção (web e app) futuramente
+# ]
 
 
 # Database Configuration

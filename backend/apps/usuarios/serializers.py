@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from .models import Usuario
 from apps.core.models import Escola
 
@@ -14,8 +15,31 @@ class EscolaTokenSerializer(serializers.ModelSerializer):
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Customiza o serializer do SimpleJWT para adicionar informações
-    adicionais (payload) ao access token.
+    adicionais (payload) ao access token e melhorar mensagens de erro.
     """
+    default_error_messages = {
+        "no_active_account": "Nenhuma conta ativa encontrada com as credenciais fornecidas"
+    }
+    
+    def validate(self, attrs):
+        """
+        Valida as credenciais e retorna os tokens.
+        Melhora as mensagens de erro em português.
+        """
+        try:
+            data = super().validate(attrs)
+        except AuthenticationFailed as e:
+            # Melhora a mensagem de erro para português
+            raise AuthenticationFailed(
+                "E-mail ou senha inválidos. Verifique suas credenciais e tente novamente.",
+                code="no_active_account"
+            )
+        except Exception as e:
+            # Re-lança outras exceções sem modificação
+            raise
+        
+        return data
+    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
