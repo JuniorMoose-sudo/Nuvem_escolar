@@ -137,3 +137,29 @@ class PerfilResponsavel(models.Model):
     class Meta:
         verbose_name = "Perfil (Responsável)"
         verbose_name_plural = "Perfis (Responsáveis)"
+
+
+class PushToken(models.Model):
+    """
+    Armazena tokens de push (FCM / APNs / Expo) por dispositivo.
+    Associado a um usuário e a uma escola para facilitar envio segmentado.
+    """
+    PLATAFORM_CHOICES = [
+        ("FCM", "FCM"),
+        ("APNS", "APNS"),
+        ("EXPO", "EXPO"),
+    ]
+
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='push_tokens')
+    escola = models.ForeignKey(Escola, on_delete=models.PROTECT, related_name='push_tokens', null=True, blank=True)
+    token = models.CharField(max_length=512, unique=True)
+    plataforma = models.CharField(max_length=10, choices=PLATAFORM_CHOICES, default='FCM')
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.usuario.email} - {self.plataforma}"
+
+    class Meta:
+        verbose_name = "Push Token"
+        verbose_name_plural = "Push Tokens"

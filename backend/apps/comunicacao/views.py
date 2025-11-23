@@ -18,6 +18,17 @@ from .serializers import (
 from apps.core.permissions import IsAdminDaEscola, IsProfessor, IsResponsavel
 from apps.academico.models import Aluno, Turma
 from apps.usuarios.models import Usuario
+from django.conf import settings
+
+# boto3 é opcional: endpoint de presign funciona apenas se boto3 estiver instalado e configurações AWS presentes
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    _HAS_BOTO3 = True
+except Exception:
+    boto3 = None
+    ClientError = Exception
+    _HAS_BOTO3 = False
 
 class AgendaDiariaViewSet(viewsets.ModelViewSet):
     """
@@ -199,6 +210,24 @@ class MomentoViewSet(viewsets.ModelViewSet):
         if alunos_ids:
             alunos = Aluno.objects.filter(id__in=alunos_ids, escola=user.escola)
             momento.alunos.set(alunos)
+        # Se o frontend usou presigned uploads, pode enviar file_keys com as chaves no S3
+        file_keys = self.request.data.get('file_keys') or self.request.data.get('file_keys[]')
+        if file_keys:
+            try:
+                # Suporta lista ou string JSON
+                if isinstance(file_keys, str):
+                    import json
+                    file_keys = json.loads(file_keys)
+
+                if isinstance(file_keys, (list, tuple)) and len(file_keys) > 0:
+                    # Usa a primeira chave como arquivo principal
+                    key = file_keys[0]
+                    # Atribui o nome do arquivo diretamente ao FileField (funciona com storage S3)
+                    momento.arquivo.name = key
+                    momento.save(update_fields=['arquivo'])
+            except Exception:
+                # Fail silently: não bloquear criação do momento se não conseguir associar arquivo
+                pass
     
     @action(detail=True, methods=['post', 'delete'])
     def curtir(self, request, pk=None):
@@ -223,6 +252,58 @@ class MomentoViewSet(viewsets.ModelViewSet):
                 curtida.delete()
                 return Response({'detail': 'Curtida removida.'}, status=status.HTTP_200_OK)
             return Response({'detail': 'Você não curtiu este momento.'}, status=status.HTTP_404_NOT_FOUND)
+
+        @action(detail=False, methods=['post'], url_path='presign', permission_classes=[IsAuthenticated, IsAdminDaEscola | IsProfessor])
+        def presign(self, request):
+            """Gera presigned URLs para upload direto ao S3.
+
+            Espera um payload: { "files": [{"name": "foto.jpg", "type": "image/jpeg"}, ...] }
+            Retorna: [{"key": "momentos/..jpg", "url": "https://...", "fields": {...}}]
+            """
+            if not _HAS_BOTO3:
+                return Response({
+                    'detail': 'boto3 não está instalado no servidor. Instale boto3 para usar presign.'
+                }, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+            files = request.data.get('files') or []
+            if not isinstance(files, list) or not files:
+                return Response({'detail': 'Informe a lista de arquivos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+            region = getattr(settings, 'AWS_S3_REGION_NAME', None)
+            if not bucket:
+                return Response({'detail': 'Configuração AWS_STORAGE_BUCKET_NAME ausente.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            s3_client = boto3.client('s3')
+            results = []
+            for f in files:
+                name = f.get('name')
+                content_type = f.get('type', 'application/octet-stream')
+                if not name:
+                    continue
+
+                # Gere uma key simples - delega a prefix para o backend (momentos/..)
+                import uuid
+                ext = name.split('.')[-1]
+                key = f"momentos/{request.user.escola.id}/{uuid.uuid4()}.{ext}"
+
+                try:
+                    presigned = s3_client.generate_presigned_post(
+                        Bucket=bucket,
+                        Key=key,
+                        Fields={"Content-Type": content_type},
+                        Conditions=[{"Content-Type": content_type}],
+                        ExpiresIn=300,
+                    )
+                    results.append({
+                        'key': key,
+                        'url': presigned.get('url'),
+                        'fields': presigned.get('fields')
+                    })
+                except ClientError as e:
+                    return Response({'detail': f'Erro ao gerar presigned URL: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            return Response(results)
 
 
 class ComunicadoViewSet(viewsets.ModelViewSet):

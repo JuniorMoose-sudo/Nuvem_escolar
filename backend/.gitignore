@@ -1,0 +1,81 @@
+# ======================
+#  Arquivos Python
+# ======================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ======================
+#  Ambiente Virtual
+# ======================
+venv/
+.venv/
+env/
+.env/
+.env.* 
+
+# ======================
+#  Arquivos Django
+# ======================
+*.log
+*.pot
+*.pyc
+*.pyo
+*.mo
+
+# Arquivo de banco de dados SQLite (caso esteja usando)
+db.sqlite3
+db.sqlite3-journal
+
+# Arquivos de migração que não devem ser versionados (opcional)
+# Se quiser ignorar migrações, descomente:
+# **/migrations/*.py
+# !**/migrations/__init__.py
+
+# ======================
+#  Static & Media
+# ======================
+staticfiles/
+static/
+media/
+
+# Se gerar coletadas via collectstatic
+/staticfiles/
+/static_root/
+/media_root/
+
+# ======================
+#  Configuração / Segredos
+# ======================
+*.env
+*.ini
+*.cfg
+*.secret
+secret_key.txt
+
+# ======================
+#  Builds, Testes e Caches
+# ======================
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ======================
+#  IDEs
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ======================
+#  Sistema
+# ======================
+.DS_Store
+Thumbs.db

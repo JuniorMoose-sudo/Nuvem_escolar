@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, PerfilProfessor, PerfilResponsavel
+from .models import Usuario, PerfilProfessor, PerfilResponsavel, PushToken
 from apps.core.models import Escola
 
 # Registro do modelo Escola (do app core)
@@ -102,3 +102,11 @@ class PerfilResponsavelAdmin(admin.ModelAdmin):
     @admin.display(description='Escola')
     def get_escola(self, obj):
         return obj.usuario.escola
+
+
+@admin.register(PushToken)
+class PushTokenAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'plataforma', 'token', 'escola', 'atualizado_em')
+    search_fields = ('usuario__email', 'token')
+    list_filter = ('plataforma', 'escola')
+    readonly_fields = ('criado_em', 'atualizado_em')

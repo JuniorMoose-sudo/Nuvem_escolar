@@ -75,3 +75,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'date_joined'
         ]
         read_only_fields = ('last_login', 'date_joined')
+
+
+class PushTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = None  # set dynamically to avoid import cycle
+        fields = ['id', 'usuario', 'escola', 'token', 'plataforma', 'criado_em', 'atualizado_em']
+        read_only_fields = ['id', 'criado_em', 'atualizado_em']
+
+    def __init__(self, *args, **kwargs):
+        # Import model lazily to avoid circular imports
+        from .models import PushToken
+        self.Meta.model = PushToken
+        super().__init__(*args, **kwargs)

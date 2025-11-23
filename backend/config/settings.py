@@ -265,3 +265,6 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# Firebase Cloud Messaging server key (use env var in production)
+FCM_SERVER_KEY = os.environ.get('FCM_SERVER_KEY', None)

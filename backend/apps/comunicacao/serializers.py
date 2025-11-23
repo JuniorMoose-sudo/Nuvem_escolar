@@ -50,6 +50,17 @@ class AgendaDiariaSerializer(serializers.ModelSerializer):
         2. Valida que o aluno pertence à escola do usuário (multi-tenancy).
         """
         aluno = data.get('aluno')
+        # Se o campo 'aluno' veio como UUID (por causa de `aluno_id` com source='aluno'),
+        # resolve o objeto Aluno antes de acessar atributos como `.escola`.
+        from uuid import UUID
+        if aluno and not hasattr(aluno, 'escola'):
+            try:
+                aluno = Aluno.objects.get(id=aluno)
+                data['aluno'] = aluno
+            except (Aluno.DoesNotExist, ValueError, TypeError):
+                raise serializers.ValidationError({
+                    'aluno_id': 'Aluno não encontrado.'
+                })
         data_agenda = data.get('data')
 
         # Validação de multi-tenancy: garante que o aluno pertence à escola do usuário
