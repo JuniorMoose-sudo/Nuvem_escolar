@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
-from .models import Usuario
+from .models import Usuario, PushToken
 from apps.core.models import Escola
 
 class EscolaTokenSerializer(serializers.ModelSerializer):
@@ -78,13 +78,11 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class PushTokenSerializer(serializers.ModelSerializer):
+    """
+    Serializer para o modelo PushToken, usado para registrar
+    tokens de dispositivo para notificações push.
+    """
     class Meta:
-        model = None  # set dynamically to avoid import cycle
-        fields = ['id', 'usuario', 'escola', 'token', 'plataforma', 'criado_em', 'atualizado_em']
-        read_only_fields = ['id', 'criado_em', 'atualizado_em']
-
-    def __init__(self, *args, **kwargs):
-        # Import model lazily to avoid circular imports
-        from .models import PushToken
-        self.Meta.model = PushToken
-        super().__init__(*args, **kwargs)
+        model = PushToken
+        fields = '__all__'
+        read_only_fields = ('usuario', 'escola',)

@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
+import { registerForPushNotificationsAsync, sendTokenToBackend } from '../services/notificationService';
 
 const AuthContext = createContext({});
 
@@ -23,6 +24,13 @@ export const AuthProvider = ({ children }) => {
           const response = await api.get('/usuarios/me/');
           setUser(response.data);
           setIsAuthenticated(true);
+          // Registra token de push assim que sabemos que o usuário está autenticado
+          try {
+            const token = await registerForPushNotificationsAsync();
+            if (token) await sendTokenToBackend(token);
+          } catch (err) {
+            console.warn('Falha ao registrar token de push automaticamente:', err);
+          }
         } catch (error) {
           // Token inválido, limpa o storage
           await logout();
@@ -45,6 +53,13 @@ export const AuthProvider = ({ children }) => {
       api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       setUser(userData);
       setIsAuthenticated(true);
+      // Registrar token de push após login
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (token) await sendTokenToBackend(token);
+      } catch (err) {
+        console.warn('Falha ao registrar token de push após login:', err);
+      }
     } catch (error) {
       console.error('Erro ao fazer login:', error);
       throw error;

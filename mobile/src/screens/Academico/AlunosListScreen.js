@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,8 @@ import {
 } from 'react-native';
 import { academicoService } from '../../services/academicoService';
 import { useNavigation } from '@react-navigation/native';
-
-const COLORS = {
-  azulClaro: '#4A90E2',
-  laranja: '#F5A623',
-  branco: '#FFFFFF',
-  cinzaClaro: '#9B9B9B',
-};
+import { theme } from '../../theme/theme'; // Importando o tema
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Para ícones
 
 const AlunosListScreen = () => {
   const [alunos, setAlunos] = useState([]);
@@ -25,16 +20,10 @@ const AlunosListScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
 
-  useEffect(() => {
-    fetchAlunos();
-  }, []);
-
-  const fetchAlunos = async () => {
+  const fetchAlunos = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
       const response = await academicoService.getAlunos();
-      // A API pode retornar um array direto ou um objeto com 'results' (paginação)
       const alunosData = response.data.results || response.data;
       setAlunos(Array.isArray(alunosData) ? alunosData : []);
     } catch (err) {
@@ -44,58 +33,66 @@ const AlunosListScreen = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  const onRefresh = () => {
+  useEffect(() => {
+    fetchAlunos();
+  }, [fetchAlunos]);
+
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchAlunos();
-  };
+  }, [fetchAlunos]);
 
   const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.alunoCard}>
-      <View style={styles.alunoHeader}>
-        <View style={styles.alunoAvatar}>
-          <Text style={styles.alunoAvatarText}>
+    <TouchableOpacity style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
             {item.nome_completo.charAt(0).toUpperCase()}
           </Text>
         </View>
-        <View style={styles.alunoInfo}>
-          <Text style={styles.alunoNome}>{item.nome_completo}</Text>
-          <Text style={styles.alunoMatricula}>Matrícula: {item.matricula}</Text>
+        <View style={styles.info}>
+          <Text style={styles.nome}>{item.nome_completo}</Text>
+          <Text style={styles.detail}>Matrícula: {item.matricula}</Text>
           {item.turma && (
-            <Text style={styles.alunoTurma}>Turma: {item.turma.nome || item.turma}</Text>
+            <Text style={[styles.detail, { color: theme.colors.primary }]}>
+              Turma: {item.turma.nome || item.turma}
+            </Text>
           )}
         </View>
       </View>
     </TouchableOpacity>
   );
 
+  const renderStatus = (icon, message, buttonText, onButtonPress) => (
+    <View style={styles.center}>
+      <MaterialCommunityIcons name={icon} size={60} color={theme.colors.textSecondary} style={{ marginBottom: theme.spacing.m }} />
+      <Text style={styles.statusText}>{message}</Text>
+      {buttonText && (
+        <TouchableOpacity style={styles.button} onPress={onButtonPress}>
+          <Text style={styles.buttonText}>{buttonText}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   if (loading && !refreshing) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.azulClaro} />
-        <Text style={styles.loadingText}>Carregando alunos...</Text>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
 
   if (error && !loading) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchAlunos}>
-          <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return renderStatus('alert-circle-outline', error, 'Tentar Novamente', fetchAlunos);
   }
 
   return (
     <View style={styles.container}>
       {alunos.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyText}>Nenhum aluno encontrado.</Text>
-        </View>
+        renderStatus('account-search-outline', 'Nenhum aluno encontrado.')
       ) : (
         <FlatList
           data={alunos}
@@ -106,7 +103,8 @@ const AlunosListScreen = () => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[COLORS.azulClaro]}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
             />
           }
         />
@@ -118,96 +116,69 @@ const AlunosListScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.branco,
+    backgroundColor: theme.colors.background,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.branco,
+    padding: theme.spacing.l,
   },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.cinzaClaro,
-    fontSize: 16,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
+  statusText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
-    fontSize: 16,
-    paddingHorizontal: 20,
+    marginBottom: theme.spacing.m,
   },
-  retryButton: {
-    backgroundColor: COLORS.azulClaro,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginTop: 10,
+  button: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.s,
+    paddingHorizontal: theme.spacing.l,
+    borderRadius: theme.shape.borderRadiusMedium,
+    ...theme.shadows.light,
   },
-  retryButtonText: {
-    color: COLORS.branco,
-    fontWeight: 'bold',
+  buttonText: {
+    ...theme.typography.button,
     fontSize: 16,
   },
   listContent: {
-    padding: 16,
+    padding: theme.spacing.m,
   },
-  alunoCard: {
-    backgroundColor: COLORS.branco,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.azulClaro,
+  card: {
+    ...theme.components.card,
+    marginBottom: theme.spacing.m,
+    ...theme.shadows.light,
   },
-  alunoHeader: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  alunoAvatar: {
+  avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: COLORS.azulClaro,
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: theme.spacing.m,
   },
-  alunoAvatarText: {
-    color: COLORS.branco,
+  avatarText: {
+    color: theme.colors.white,
     fontSize: 20,
     fontWeight: 'bold',
   },
-  alunoInfo: {
+  info: {
     flex: 1,
   },
-  alunoNome: {
+  nome: {
+    ...theme.typography.h3,
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.xs,
   },
-  alunoMatricula: {
-    fontSize: 14,
-    color: COLORS.cinzaClaro,
-    marginBottom: 2,
-  },
-  alunoTurma: {
-    fontSize: 14,
-    color: COLORS.laranja,
-    fontWeight: '500',
-  },
-  emptyText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: COLORS.cinzaClaro,
-    marginTop: 20,
+  detail: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
   },
 });
 

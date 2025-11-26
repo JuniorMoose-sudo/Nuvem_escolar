@@ -11,6 +11,7 @@ class Escola(models.Model):
     razao_social = models.CharField(max_length=255, verbose_name="Razão Social")
     cnpj = models.CharField(max_length=18, unique=True, verbose_name="CNPJ")
     
+    
     # Contato
     email_contato = models.EmailField(max_length=255, verbose_name="E-mail de Contato")
     telefone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone")

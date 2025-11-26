@@ -13,6 +13,15 @@ export const academicoService = {
   },
 
   /**
+   * Busca alunos por termo (nome ou matrícula). Retorna mesma estrutura que getAlunos.
+   */
+  searchAlunos: async (term, page = 1) => {
+    const q = encodeURIComponent(term || '');
+    const response = await api.get(`/academico/alunos/?search=${q}&page=${page}`);
+    return response;
+  },
+
+  /**
    * Obtém detalhes de um aluno específico
    */
   getAluno: async (alunoId) => {

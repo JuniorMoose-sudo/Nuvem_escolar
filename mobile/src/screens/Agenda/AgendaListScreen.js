@@ -1,83 +1,125 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  ActivityIndicator,
+  StyleSheet,
+  TouchableOpacity,
+  RefreshControl,
+} from 'react-native';
+import { useAuth } from '../../contexts/AuthContext';
 import { agendaService } from '../../services/agendaService';
-import { useNavigation } from '@react-navigation/native';
-
-const COLORS = {
-  azulClaro: '#4A90E2',
-  branco: '#FFFFFF',
-  cinzaClaro: '#9B9B9B',
-};
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { theme } from '../../theme/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import FAB from '../../components/FAB';
 
 const AgendaListScreen = () => {
   const [agendas, setAgendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
+  const { user } = useAuth();
+  
+  const canCreate = user?.tipo_usuario === 'PROFESSOR' || user?.is_staff || user?.tipo_usuario === 'ADMIN';
 
-  useEffect(() => {
-    fetchAgendas();
-  }, []);
-
-  const fetchAgendas = async () => {
+  const fetchAgendas = useCallback(async () => {
     try {
-      setLoading(true);
+      setError(null);
       const response = await agendaService.getAgendas();
-      setAgendas(response.data.results); // Supondo que a API retorna um objeto com 'results'
+      const data = response.data.results || response.data || [];
+      setAgendas(Array.isArray(data) ? data : []);
     } catch (err) {
       setError('Erro ao carregar agendas. Tente novamente.');
       console.error('Erro ao buscar agendas:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      fetchAgendas();
+    }, [fetchAgendas])
+  );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchAgendas();
+  }, [fetchAgendas]);
 
   const renderItem = ({ item }) => (
     <TouchableOpacity 
-      style={styles.agendaCard} 
+      style={styles.card} 
       onPress={() => navigation.navigate('AgendaDetalhe', { agendaId: item.id })}
     >
-      <Text style={styles.alunoNome}>{item.aluno.nome_completo}</Text>
-      <Text style={styles.agendaData}>Data: {new Date(item.data).toLocaleDateString('pt-BR')}</Text>
-      {item.atividades && item.atividades.length > 0 && (
-        <Text style={styles.atividadePreview}>
-          Atividades: {item.atividades[0].tipo} ({item.atividades[0].horario})
-        </Text>
-      )}
+      <View style={styles.cardHeader}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {item.aluno.nome_completo.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.info}>
+          <Text style={styles.nome}>{item.aluno.nome_completo}</Text>
+          <Text style={styles.detail}>
+            <MaterialCommunityIcons name="calendar" size={14} color={theme.colors.textSecondary} />
+            {' '}{new Date(item.data).toLocaleDateString('pt-BR')}
+          </Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 
-  if (loading) {
+  const renderStatus = (icon, message, buttonText, onButtonPress) => (
+    <View style={styles.center}>
+      <MaterialCommunityIcons name={icon} size={60} color={theme.colors.textSecondary} style={{ marginBottom: theme.spacing.m }} />
+      <Text style={styles.statusText}>{message}</Text>
+      {buttonText && (
+        <TouchableOpacity style={styles.button} onPress={onButtonPress}>
+          <Text style={styles.buttonText}>{buttonText}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.azulClaro} />
-        <Text style={styles.loadingText}>Carregando agendas...</Text>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
 
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchAgendas}>
-          <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  if (error && !loading) {
+    return renderStatus('alert-circle-outline', error, 'Tentar Novamente', onRefresh);
   }
 
   return (
     <View style={styles.container}>
       {agendas.length === 0 ? (
-        <Text style={styles.emptyText}>Nenhuma agenda encontrada.</Text>
+        renderStatus('calendar-search', 'Nenhuma agenda encontrada.')
       ) : (
         <FlatList
           data={agendas}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
         />
+      )}
+      {canCreate && (
+        <FAB onPress={() => navigation.navigate('AgendaCreate')} />
       )}
     </View>
   );
@@ -86,67 +128,70 @@ const AgendaListScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.branco,
+    backgroundColor: theme.colors.background,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.branco,
+    padding: theme.spacing.l,
   },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.cinzaClaro,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
+  statusText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginBottom: theme.spacing.m,
   },
-  retryButton: {
-    backgroundColor: COLORS.azulClaro,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 5,
+  button: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.s,
+    paddingHorizontal: theme.spacing.l,
+    borderRadius: theme.shape.borderRadiusMedium,
+    ...theme.shadows.light,
   },
-  retryButtonText: {
-    color: COLORS.branco,
-    fontWeight: 'bold',
+  buttonText: {
+    ...theme.typography.button,
+    fontSize: 16,
   },
   listContent: {
-    padding: 10,
+    padding: theme.spacing.m,
   },
-  agendaCard: {
-    backgroundColor: COLORS.branco,
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
-    elevation: 3,
+  card: {
+    ...theme.components.card,
+    marginBottom: theme.spacing.m,
+    ...theme.shadows.light,
   },
-  alunoNome: {
-    fontSize: 18,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.m,
+  },
+  avatarText: {
+    color: theme.colors.white,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: COLORS.azulClaro,
   },
-  agendaData: {
-    fontSize: 14,
-    color: COLORS.cinzaClaro,
-    marginTop: 5,
+  info: {
+    flex: 1,
   },
-  atividadePreview: {
-    fontSize: 14,
-    color: COLORS.cinzaClaro,
-    marginTop: 5,
+  nome: {
+    ...theme.typography.h3,
+    fontSize: 18,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.xs,
   },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
-    color: COLORS.cinzaClaro,
+  detail: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    alignItems: 'center',
   },
 });
 

@@ -1,14 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { agendaService } from '../../services/agendaService';
 import { useRoute } from '@react-navigation/native';
-
-const COLORS = {
-  azulClaro: '#4A90E2',
-  laranja: '#F5A623',
-  branco: '#FFFFFF',
-  cinzaClaro: '#9B9B9B',
-};
+import { theme } from '../../theme/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const AgendaDetalheScreen = () => {
   const route = useRoute();
@@ -16,79 +11,114 @@ const AgendaDetalheScreen = () => {
   const [agenda, setAgenda] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchAgendaDetalhe();
-  }, [agendaId]);
-
-  const fetchAgendaDetalhe = async () => {
+  const fetchAgendaDetalhe = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await agendaService.getAgendaDetalhe(agendaId);
       setAgenda(response.data);
     } catch (err) {
-      setError('Erro ao carregar detalhes da agenda. Tente novamente.');
+      setError('Erro ao carregar detalhes da agenda.');
       console.error('Erro ao buscar detalhes da agenda:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }, [agendaId]);
+
+  useEffect(() => {
+    fetchAgendaDetalhe();
+  }, [fetchAgendaDetalhe]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchAgendaDetalhe();
   };
 
-  if (loading) {
+  const renderStatus = (icon, message, buttonText, onButtonPress) => (
+    <View style={styles.center}>
+      <MaterialCommunityIcons name={icon} size={60} color={theme.colors.textSecondary} style={{ marginBottom: theme.spacing.m }} />
+      <Text style={styles.statusText}>{message}</Text>
+      {buttonText && (
+        <TouchableOpacity style={styles.button} onPress={onButtonPress}>
+          <Text style={styles.buttonText}>{buttonText}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  const renderAtividade = (atividade, index) => (
+    <View key={index} style={styles.itemCard}>
+      <MaterialCommunityIcons name="clipboard-text-outline" size={24} color={theme.colors.primary} style={styles.itemIcon} />
+      <View style={styles.itemContent}>
+        <Text style={styles.itemTitle}>{atividade.tipo} ({atividade.horario})</Text>
+        <Text style={styles.itemSubtitle}>{atividade.observacao}</Text>
+      </View>
+    </View>
+  );
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.azulClaro} />
-        <Text style={styles.loadingText}>Carregando detalhes da agenda...</Text>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
 
   if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchAgendaDetalhe}>
-          <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return renderStatus('alert-circle-outline', error, 'Tentar Novamente', fetchAgendaDetalhe);
   }
 
   if (!agenda) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.emptyText}>Agenda não encontrada.</Text>
-      </View>
-    );
+    return renderStatus('calendar-question', 'Agenda não encontrada.');
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.alunoNome}>{agenda.aluno.nome_completo}</Text>
-        <Text style={styles.data}>Data: {new Date(agenda.data).toLocaleDateString('pt-BR')}</Text>
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[theme.colors.primary]}
+          tintColor={theme.colors.primary}
+        />
+      }
+    >
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{agenda.aluno.nome_completo}</Text>
+        <Text style={styles.headerSubtitle}>
+          <MaterialCommunityIcons name="calendar" size={16} color={theme.colors.textSecondary} />
+          {' '}{new Date(agenda.data).toLocaleDateString('pt-BR')}
+        </Text>
+      </View>
 
-        <Text style={styles.sectionTitle}>Atividades do Dia:</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Atividades do Dia</Text>
         {agenda.atividades && agenda.atividades.length > 0 ? (
-          agenda.atividades.map((atividade, index) => (
-            <View key={index} style={styles.atividadeItem}>
-              <Text style={styles.atividadeTipo}>{atividade.tipo} ({atividade.horario})</Text>
-              <Text style={styles.atividadeObservacao}>{atividade.observacao}</Text>
-            </View>
-          ))
+          agenda.atividades.map(renderAtividade)
         ) : (
-          <Text style={styles.noActivities}>Nenhuma atividade registrada para este dia.</Text>
+          <Text style={styles.emptyText}>Nenhuma atividade registrada.</Text>
         )}
+      </View>
 
-        {agenda.observacoes_professor ? (
-          <>
-            <Text style={styles.sectionTitle}>Observações do Professor:</Text>
-            <Text style={styles.observacoes}>{agenda.observacoes_professor}</Text>
-          </>
-        ) : null}
+      {agenda.observacoes_professor ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Observações do Professor</Text>
+          <View style={styles.itemCard}>
+            <MaterialCommunityIcons name="comment-text-outline" size={24} color={theme.colors.primary} style={styles.itemIcon} />
+            <View style={styles.itemContent}>
+              <Text style={styles.itemSubtitle}>{agenda.observacoes_professor}</Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
+      <View style={styles.footer}>
         <Text style={styles.footerText}>Criado em: {new Date(agenda.data_criacao).toLocaleString('pt-BR')}</Text>
-        <Text style={styles.footerText}>Última atualização: {new Date(agenda.data_atualizacao).toLocaleString('pt-BR')}</Text>
+        <Text style={styles.footerText}>Atualizado em: {new Date(agenda.data_atualizacao).toLocaleString('pt-BR')}</Text>
       </View>
     </ScrollView>
   );
@@ -97,102 +127,97 @@ const AgendaDetalheScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.branco,
-    padding: 15,
+    backgroundColor: theme.colors.background,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.branco,
+    padding: theme.spacing.l,
+    backgroundColor: theme.colors.background,
   },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.cinzaClaro,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
+  statusText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginBottom: theme.spacing.m,
   },
-  retryButton: {
-    backgroundColor: COLORS.azulClaro,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 5,
+  button: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.s,
+    paddingHorizontal: theme.spacing.l,
+    borderRadius: theme.shape.borderRadiusMedium,
+    ...theme.shadows.light,
   },
-  retryButtonText: {
-    color: COLORS.branco,
-    fontWeight: 'bold',
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 20,
+  buttonText: {
+    ...theme.typography.button,
     fontSize: 16,
-    color: COLORS.cinzaClaro,
   },
-  card: {
-    backgroundColor: COLORS.branco,
-    borderRadius: 10,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+  header: {
+    backgroundColor: theme.colors.card,
+    padding: theme.spacing.l,
+    marginBottom: theme.spacing.m,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
-  alunoNome: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.azulClaro,
-    marginBottom: 5,
+  headerTitle: {
+    ...theme.typography.h2,
+    color: theme.colors.primary,
   },
-  data: {
-    fontSize: 16,
-    color: COLORS.cinzaClaro,
-    marginBottom: 20,
+  headerSubtitle: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+  },
+  section: {
+    ...theme.components.card,
+    marginHorizontal: theme.spacing.m,
+    marginBottom: theme.spacing.m,
+    padding: theme.spacing.m,
   },
   sectionTitle: {
+    ...theme.typography.h3,
     fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.laranja,
-    marginTop: 15,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.cinzaClaro,
-    paddingBottom: 5,
+    marginBottom: theme.spacing.m,
   },
-  atividadeItem: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.shape.borderRadiusSmall,
+    padding: theme.spacing.s,
+    marginBottom: theme.spacing.s,
   },
-  atividadeTipo: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+  itemIcon: {
+    marginRight: theme.spacing.m,
+    marginTop: 2,
   },
-  atividadeObservacao: {
-    fontSize: 14,
-    color: '#555',
-    marginTop: 5,
+  itemContent: {
+    flex: 1,
   },
-  noActivities: {
-    fontSize: 14,
-    color: COLORS.cinzaClaro,
+  itemTitle: {
+    ...theme.typography.label,
+    color: theme.colors.textPrimary,
+  },
+  itemSubtitle: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  emptyText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
     fontStyle: 'italic',
+    textAlign: 'center',
   },
-  observacoes: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 20,
+  footer: {
+    padding: theme.spacing.m,
+    alignItems: 'center',
   },
   footerText: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
     fontSize: 12,
-    color: COLORS.cinzaClaro,
-    marginTop: 10,
-    textAlign: 'right',
   },
 });
 

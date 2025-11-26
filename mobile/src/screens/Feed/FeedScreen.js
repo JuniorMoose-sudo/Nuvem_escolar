@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,131 +9,100 @@ import {
   Image,
   TouchableOpacity,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { feedService } from '../../services/feedService';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
-
-const COLORS = {
-  azulClaro: '#4A90E2',
-  laranja: '#F5A623',
-  branco: '#FFFFFF',
-  cinzaClaro: '#9B9B9B',
-};
+import FAB from '../../components/FAB';
+import { theme } from '../../theme/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const FeedScreen = () => {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextPage, setNextPage] = useState(null);
   const [error, setError] = useState(null);
+  const [showCreateOptions, setShowCreateOptions] = useState(false);
   const { user } = useAuth();
+  const canCreate = user?.tipo_usuario === 'PROFESSOR' || user?.is_staff || user?.tipo_usuario === 'ADMIN';
+  const navigation = useNavigation();
 
-  useEffect(() => {
-    loadFeed();
-  }, []);
-
-  const loadFeed = async (page = 1, append = false) => {
+  const loadFeed = useCallback(async () => {
     try {
-      if (page === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
       setError(null);
-
-      // Carrega momentos e comunicados em paralelo
       const [momentosRes, comunicadosRes] = await Promise.all([
-        feedService.getMomentos(page),
-        feedService.getComunicados(page),
+        feedService.getMomentos(),
+        feedService.getComunicados(),
       ]);
 
-      const momentos = momentosRes.data.results || [];
-      const comunicados = comunicadosRes.data.results || [];
+      const momentos = (momentosRes.data.results || []).map(m => ({ ...m, postType: 'momento' }));
+      const comunicados = (comunicadosRes.data.results || []).map(c => ({ ...c, postType: 'comunicado' }));
+      
+      const combined = [...momentos, ...comunicados].sort((a, b) => 
+        new Date(b.data_criacao || b.data_publicacao) - new Date(a.data_criacao || a.data_publicacao)
+      );
 
-      // Combina e ordena por data (mais recente primeiro)
-      const combined = [...momentos, ...comunicados].sort((a, b) => {
-        const dateA = new Date(a.data_criacao || a.data_publicacao);
-        const dateB = new Date(b.data_criacao || b.data_publicacao);
-        return dateB - dateA;
-      });
-
-      if (append) {
-        setFeed((prev) => [...prev, ...combined]);
-      } else {
-        setFeed(combined);
-      }
-
-      // Verifica se há próxima página
-      const nextMomento = momentosRes.data.next;
-      const nextComunicado = comunicadosRes.data.next;
-      setNextPage(nextMomento || nextComunicado ? page + 1 : null);
+      setFeed(combined);
     } catch (err) {
-      setError('Erro ao carregar feed. Tente novamente.');
+      setError('Erro ao carregar o feed. Tente novamente.');
       console.error('Erro ao carregar feed:', err);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      loadFeed();
+    }, [loadFeed])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadFeed(1, false);
+    loadFeed();
   };
 
-  const loadMore = () => {
-    if (nextPage && !loadingMore) {
-      loadFeed(nextPage, true);
-    }
-  };
-
-  const handleCurtir = async (item) => {
+  const handleAction = async (item, action) => {
     try {
-      if (item.tipo) {
-        // É um momento
-        await feedService.curtirMomento(item.id);
-      } else {
-        // É um comunicado
-        await feedService.curtirComunicado(item.id);
-      }
-      // Recarrega o item específico
-      loadFeed(1, false);
+      const service = item.postType === 'momento' ? feedService.curtirMomento : feedService.curtirComunicado;
+      await service(item.id);
+      loadFeed(); // Recarrega o feed para refletir a mudança
     } catch (err) {
-      Alert.alert('Erro', 'Não foi possível curtir. Tente novamente.');
+      Alert.alert('Erro', `Não foi possível ${action} o item. Tente novamente.`);
     }
+  };
+
+  const navigateToCreate = (screen) => {
+    setShowCreateOptions(false);
+    navigation.navigate(screen);
   };
 
   const renderItem = ({ item }) => {
-    const isMomento = !!item.tipo;
+    const isMomento = item.postType === 'momento';
     
     return (
       <View style={styles.card}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {item.autor?.nome_completo?.charAt(0).toUpperCase() || '?'}
-            </Text>
-          </View>
-          <View style={styles.headerInfo}>
-            <Text style={styles.autorNome}>{item.autor?.nome_completo || 'Desconhecido'}</Text>
+        <View style={styles.cardHeader}>
+          <Image
+            style={styles.avatar}
+            source={{ uri: item.autor?.avatar_url || 'https://via.placeholder.com/40' }}
+          />
+          <View>
+            <Text style={styles.autorNome}>{item.autor?.nome_completo || 'Autor Desconhecido'}</Text>
             <Text style={styles.data}>
-              {new Date(item.data_criacao || item.data_publicacao).toLocaleDateString('pt-BR')}
+              {new Date(item.data_criacao || item.data_publicacao).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
             </Text>
           </View>
         </View>
 
-        {/* Conteúdo */}
         {isMomento ? (
           <>
-            {item.arquivo_url && (
-              <Image source={{ uri: item.arquivo_url }} style={styles.imagem} />
-            )}
-            {item.descricao && (
-              <Text style={styles.descricao}>{item.descricao}</Text>
-            )}
+            {item.arquivo_url && <Image source={{ uri: item.arquivo_url }} style={styles.imagem} />}
+            {item.descricao && <Text style={styles.conteudo}>{item.descricao}</Text>}
           </>
         ) : (
           <>
@@ -142,17 +111,13 @@ const FeedScreen = () => {
           </>
         )}
 
-        {/* Ações */}
-        <View style={styles.acoes}>
-          <TouchableOpacity
-            style={styles.acaoButton}
-            onPress={() => handleCurtir(item)}
-          >
-            <Text style={styles.acaoIcon}>❤️</Text>
+        <View style={styles.cardFooter}>
+          <TouchableOpacity style={styles.acaoButton} onPress={() => handleAction(item, 'curtir')}>
+            <MaterialCommunityIcons name={item.curtido_por_usuario ? 'heart' : 'heart-outline'} size={22} color={item.curtido_por_usuario ? theme.colors.error : theme.colors.textSecondary} />
             <Text style={styles.acaoTexto}>{item.total_curtidas || 0}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.acaoButton}>
-            <Text style={styles.acaoIcon}>💬</Text>
+            <MaterialCommunityIcons name="comment-text-multiple-outline" size={22} color={theme.colors.textSecondary} />
             <Text style={styles.acaoTexto}>{item.total_comentarios || 0}</Text>
           </TouchableOpacity>
         </View>
@@ -160,195 +125,91 @@ const FeedScreen = () => {
     );
   };
 
+  const renderStatus = (icon, message) => (
+    <View style={styles.center}>
+        <MaterialCommunityIcons name={icon} size={60} color={theme.colors.textSecondary} style={{ marginBottom: theme.spacing.m }} />
+        <Text style={styles.statusText}>{message}</Text>
+        {error && 
+          <TouchableOpacity style={styles.button} onPress={onRefresh}>
+            <Text style={styles.buttonText}>Tentar Novamente</Text>
+          </TouchableOpacity>
+        }
+    </View>
+  );
+
   if (loading && !refreshing) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.azulClaro} />
-        <Text style={styles.loadingText}>Carregando feed...</Text>
-      </View>
-    );
+    return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.primary} /></View>;
   }
-
-  if (error && !loading) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => loadFeed(1, false)}>
-          <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
+  
   return (
     <View style={styles.container}>
       <FlatList
         data={feed}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.azulClaro]}
-          />
-        }
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        ListFooterComponent={
-          loadingMore ? (
-            <ActivityIndicator size="small" color={COLORS.azulClaro} style={styles.footerLoader} />
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Nenhum conteúdo no feed ainda.</Text>
-          </View>
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} tintColor={theme.colors.primary} />}
+        ListEmptyComponent={() => !loading && renderStatus(error ? 'alert-circle-outline' : 'compass-off-outline', error || 'Nenhum conteúdo no feed ainda.')}
       />
+
+      {canCreate && <FAB onPress={() => setShowCreateOptions(true)} icon="plus" />}
+
+      <Modal visible={showCreateOptions} transparent animationType="fade" onRequestClose={() => setShowCreateOptions(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowCreateOptions(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Criar Publicação</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('MomentCreate')}>
+              <MaterialCommunityIcons name="image-multiple" size={24} color={theme.colors.primary} />
+              <Text style={styles.modalButtonText}>Novo Momento</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('ComunicadoCreate')}>
+              <MaterialCommunityIcons name="bullhorn" size={24} color={theme.colors.primary} />
+              <Text style={styles.modalButtonText}>Novo Comunicado</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.branco,
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.l },
+  statusText: { ...theme.typography.body, color: theme.colors.textSecondary, textAlign: 'center' },
+  button: { backgroundColor: theme.colors.primary, padding: theme.spacing.m, borderRadius: theme.shape.borderRadiusMedium, marginTop: theme.spacing.m },
+  buttonText: { ...theme.typography.button },
+  listContent: { padding: theme.spacing.m },
+  card: { ...theme.components.card, marginBottom: theme.spacing.m, ...theme.shadows.light },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.m },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: theme.spacing.m, backgroundColor: theme.colors.border },
+  autorNome: { ...theme.typography.label },
+  data: { ...theme.typography.caption, color: theme.colors.textSecondary },
+  imagem: { width: '100%', height: 250, borderRadius: theme.shape.borderRadiusSmall, marginVertical: theme.spacing.m },
+  titulo: { ...theme.typography.h3, marginBottom: theme.spacing.s },
+  conteudo: { ...theme.typography.body, color: theme.colors.textSecondary, lineHeight: 22 },
+  cardFooter: { flexDirection: 'row', paddingTop: theme.spacing.m, borderTopWidth: 1, borderTopColor: theme.colors.border, marginTop: theme.spacing.m },
+  acaoButton: { flexDirection: 'row', alignItems: 'center', marginRight: theme.spacing.l },
+  acaoTexto: { ...theme.typography.caption, color: theme.colors.textSecondary, marginLeft: theme.spacing.xs },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.shape.borderRadiusLarge,
+    padding: theme.spacing.l,
+    width: '80%',
+    ...theme.shadows.medium,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.branco,
-  },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.cinzaClaro,
-    fontSize: 16,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
-    textAlign: 'center',
-    fontSize: 16,
-    paddingHorizontal: 20,
-  },
-  retryButton: {
-    backgroundColor: COLORS.azulClaro,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  retryButtonText: {
-    color: COLORS.branco,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  listContent: {
-    padding: 16,
-  },
-  card: {
-    backgroundColor: COLORS.branco,
-    borderRadius: 12,
-    marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  header: {
+  modalTitle: { ...theme.typography.h3, textAlign: 'center', marginBottom: theme.spacing.l, color: theme.colors.primary },
+  modalButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    padding: theme.spacing.m,
+    borderRadius: theme.shape.borderRadiusMedium,
+    backgroundColor: theme.colors.background,
+    marginBottom: theme.spacing.m,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.azulClaro,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  avatarText: {
-    color: COLORS.branco,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  autorNome: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  data: {
-    fontSize: 12,
-    color: COLORS.cinzaClaro,
-    marginTop: 2,
-  },
-  imagem: {
-    width: '100%',
-    height: 300,
-    borderRadius: 8,
-    marginBottom: 12,
-    resizeMode: 'cover',
-  },
-  descricao: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  titulo: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.azulClaro,
-    marginBottom: 8,
-  },
-  conteudo: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  acoes: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    paddingTop: 12,
-    marginTop: 12,
-  },
-  acaoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 20,
-  },
-  acaoIcon: {
-    fontSize: 20,
-    marginRight: 6,
-  },
-  acaoTexto: {
-    fontSize: 14,
-    color: COLORS.cinzaClaro,
-  },
-  footerLoader: {
-    marginVertical: 20,
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.cinzaClaro,
-    textAlign: 'center',
-  },
+  modalButtonText: { ...theme.typography.label, marginLeft: theme.spacing.m },
 });
 
 export default FeedScreen;
