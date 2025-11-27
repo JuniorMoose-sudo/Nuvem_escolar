@@ -26,12 +26,16 @@ const AgendaCreateScreen = () => {
   const [error, setError] = useState(null);
   const navigation = useNavigation();
 
+  // Novo estado para a funcionalidade "Enviar para todos"
+  const [sendToAll, setSendToAll] = useState(false);
+
   const addActivity = () => setAtividades(prev => [...prev, emptyActivity()]);
   const removeActivity = (index) => setAtividades(prev => prev.filter((_, i) => i !== index));
   const updateActivity = (index, key, value) => setAtividades(prev => prev.map((act, i) => i === index ? { ...act, [key]: value } : act));
 
   const validate = () => {
-    if (!selectedAluno?.id) return 'Selecione um aluno da lista.';
+    // Modificado para não exigir aluno se 'sendToAll' for verdadeiro
+    if (!sendToAll && !selectedAluno?.id) return 'Selecione um aluno da lista.';
     if (!date) return 'Informe a data da agenda.';
     if (atividades.length === 0) return 'Adicione pelo menos uma atividade.';
     for (const act of atividades) {
@@ -99,12 +103,18 @@ const AgendaCreateScreen = () => {
         observacao: a.observacao,
       }));
 
+      // Payload dinâmico
       const payload = {
-        aluno_id: selectedAluno.id,
         data: date.toISOString().split('T')[0],
         atividades: formattedAtividades,
         observacoes_professor: observacoes,
       };
+
+      if (sendToAll) {
+        payload.para_todos_alunos = true;
+      } else {
+        payload.aluno_id = selectedAluno.id;
+      }
 
       await agendaService.criarAgenda(payload);
       Alert.alert('Sucesso', 'Agenda diária criada com sucesso!');
@@ -123,34 +133,43 @@ const AgendaCreateScreen = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <Text style={styles.header}>Criar Nova Agenda Diária</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Aluno</Text>
-        {selectedAluno ? (
-          <View style={styles.selectedItem}>
-            <Text style={styles.selectedItemText}>{selectedAluno.nome_completo}</Text>
-            <TouchableOpacity onPress={() => setSelectedAluno(null)}>
-              <MaterialCommunityIcons name="close-circle" size={24} color={theme.colors.error} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            <TextInput style={styles.input} value={searchQuery} onChangeText={setSearchQuery} placeholder="Buscar por nome ou matrícula..." />
-            {searching && <ActivityIndicator size="small" color={theme.colors.primary} />}
-            {suggestions.length > 0 && (
-              <FlatList
-                data={suggestions}
-                keyExtractor={(item) => String(item.id)}
-                style={styles.suggestionsList}
-                renderItem={({ item }) => (
-                  <TouchableOpacity onPress={() => selectAluno(item)} style={styles.suggestionItem}>
-                    <Text>{item.nome_completo}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </>
-        )}
-      </View>
+      {/* Checkbox para enviar para todos */}
+      <TouchableOpacity style={styles.checkboxContainer} onPress={() => setSendToAll(!sendToAll)}>
+        <MaterialCommunityIcons name={sendToAll ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} color={theme.colors.primary} />
+        <Text style={styles.checkboxLabel}>Enviar para todos os meus alunos</Text>
+      </TouchableOpacity>
+
+      {/* Oculta a seleção de aluno se 'sendToAll' for verdadeiro */}
+      {!sendToAll && (
+        <View style={styles.card}>
+          <Text style={styles.label}>Aluno</Text>
+          {selectedAluno ? (
+            <View style={styles.selectedItem}>
+              <Text style={styles.selectedItemText}>{selectedAluno.nome_completo}</Text>
+              <TouchableOpacity onPress={() => setSelectedAluno(null)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TextInput style={styles.input} value={searchQuery} onChangeText={setSearchQuery} placeholder="Buscar por nome ou matrícula..." />
+              {searching && <ActivityIndicator size="small" color={theme.colors.primary} />}
+              {suggestions.length > 0 && (
+                <FlatList
+                  data={suggestions}
+                  keyExtractor={(item) => String(item.id)}
+                  style={styles.suggestionsList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity onPress={() => selectAluno(item)} style={styles.suggestionItem}>
+                      <Text>{item.nome_completo}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </>
+          )}
+        </View>
+      )}
       
       <View style={styles.card}>
         <Text style={styles.label}>Data da Agenda</Text>
@@ -236,6 +255,9 @@ const styles = StyleSheet.create({
   suggestionsList: { maxHeight: 200, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.shape.borderRadiusSmall },
   suggestionItem: { padding: theme.spacing.m, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   
+  checkboxContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.m, paddingVertical: theme.spacing.s, paddingHorizontal: theme.spacing.m, backgroundColor: theme.colors.surface, borderRadius: theme.shape.borderRadiusMedium, ...theme.shadows.light },
+  checkboxLabel: { ...theme.typography.body, marginLeft: theme.spacing.m, color: theme.colors.textPrimary },
+
   activityRow: {
     padding: theme.spacing.m,
     backgroundColor: theme.colors.background,

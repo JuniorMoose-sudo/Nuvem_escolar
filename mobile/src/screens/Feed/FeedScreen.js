@@ -26,7 +26,10 @@ const FeedScreen = () => {
   const [error, setError] = useState(null);
   const [showCreateOptions, setShowCreateOptions] = useState(false);
   const { user } = useAuth();
-  const canCreate = user?.tipo_usuario === 'PROFESSOR' || user?.is_staff || user?.tipo_usuario === 'ADMIN';
+  // Permissões granulares para criação de conteúdo
+  const canCreateComunicado = user?.tipo_usuario === 'PROFESSOR' || user?.tipo_usuario === 'ADMIN_ESCOLA';
+  const canCreateMomento = user?.tipo_usuario === 'PROFESSOR';
+  const canCreate = canCreateComunicado || canCreateMomento; // Mostra o FAB se o usuário puder criar qualquer tipo de post
   const navigation = useNavigation();
 
   const loadFeed = useCallback(async () => {
@@ -158,14 +161,18 @@ const FeedScreen = () => {
         <Pressable style={styles.modalBackdrop} onPress={() => setShowCreateOptions(false)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Criar Publicação</Text>
-            <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('MomentCreate')}>
-              <MaterialCommunityIcons name="image-multiple" size={24} color={theme.colors.primary} />
-              <Text style={styles.modalButtonText}>Novo Momento</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('ComunicadoCreate')}>
-              <MaterialCommunityIcons name="bullhorn" size={24} color={theme.colors.primary} />
-              <Text style={styles.modalButtonText}>Novo Comunicado</Text>
-            </TouchableOpacity>
+            {canCreateMomento && (
+              <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('MomentCreate')}>
+                <MaterialCommunityIcons name="image-multiple" size={24} color={theme.colors.primary} />
+                <Text style={styles.modalButtonText}>Novo Momento</Text>
+              </TouchableOpacity>
+            )}
+            {canCreateComunicado && (
+              <TouchableOpacity style={styles.modalButton} onPress={() => navigateToCreate('ComunicadoCreate')}>
+                <MaterialCommunityIcons name="bullhorn" size={24} color={theme.colors.primary} />
+                <Text style={styles.modalButtonText}>Novo Comunicado</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </Pressable>
       </Modal>

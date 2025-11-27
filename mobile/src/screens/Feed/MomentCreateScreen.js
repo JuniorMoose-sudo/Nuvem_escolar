@@ -13,7 +13,6 @@ import {
   Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import uploadService from '../../services/uploadService';
 import { feedService } from '../../services/feedService';
 import { academicoService } from '../../services/academicoService';
 import { useNavigation } from '@react-navigation/native';
@@ -22,7 +21,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const MomentCreateScreen = () => {
   const [descricao, setDescricao] = useState('');
-  const [images, setImages] = useState([]);
+  const [image, setImage] = useState(null); // Alterado para um único objeto de imagem
   const [isPublishing, setIsPublishing] = useState(false);
   const [turmas, setTurmas] = useState([]);
   const [selectedTurma, setSelectedTurma] = useState(null);
@@ -41,67 +40,69 @@ const MomentCreateScreen = () => {
     loadTurmas();
   }, []);
 
-  const pickImages = async () => {
+  const pickImage = async () => {
     if (isPublishing) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão Negada', 'Você precisa permitir o acesso à galeria para postar fotos.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.7,
+      allowsEditing: true, // Permite edição para garantir um bom enquadramento
+      quality: 0.8,
     });
 
-    if (!result.cancelled) {
-      const newImages = result.selected 
-        ? result.selected.map((r, idx) => ({ uri: r.uri, name: `photo_${Date.now()}_${idx}.jpg`, type: 'image/jpeg' }))
-        : [{ uri: result.uri, name: `photo_${Date.now()}.jpg`, type: 'image/jpeg' }];
-      setImages(prev => [...prev, ...newImages]);
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      const fileType = asset.uri.split('.').pop();
+      setImage({
+        uri: asset.uri,
+        name: `photo_${Date.now()}.${fileType}`,
+        type: `image/${fileType}`,
+      });
     }
   };
 
-  const removeImage = (index) => {
-    setImages(prev => prev.filter((_, i) => i !== index));
+  const removeImage = () => {
+    setImage(null);
   };
 
   const handlePublish = async () => {
-    if (!descricao.trim() && images.length === 0) {
-      Alert.alert('Conteúdo Vazio', 'Adicione uma descrição ou pelo menos uma imagem.');
+    if (!descricao.trim() && !image) {
+      Alert.alert('Conteúdo Vazio', 'Adicione uma descrição ou uma imagem.');
       return;
     }
     
     setIsPublishing(true);
     try {
-      let fileKeys = [];
-      if (images.length > 0) {
-        try {
-          fileKeys = await uploadService.presignAndUpload(images);
-        } catch (err) {
-          console.warn('Presign falhou, usando fallback de upload via backend.', err);
-          // O backend irá lidar com o upload multipart se file_keys não for enviado
-        }
+      const formData = new FormData();
+      
+      formData.append('descricao', descricao);
+      formData.append('data_momento', new Date().toISOString().split('T')[0]);
+      
+      if (selectedTurma) {
+        formData.append('turma_id', selectedTurma.id);
       }
-
-      const payload = {
-        descricao,
-        data_momento: new Date().toISOString().split('T')[0],
-        ...(selectedTurma && { turma_id: selectedTurma.id }),
-        ...(fileKeys.length > 0 && { file_keys: fileKeys }),
-      };
-
-      if (fileKeys.length > 0) {
-        await feedService.criarMomento(payload);
-      } else {
-        const formData = new FormData();
-        Object.keys(payload).forEach(key => formData.append(key, payload[key]));
-        images.forEach(img => {
-          formData.append('arquivo', { uri: img.uri, name: img.name, type: img.type });
+      
+      if (image) {
+        formData.append('tipo', 'FOTO');
+        // O objeto do arquivo deve ter uri, name e type
+        formData.append('arquivo', {
+          uri: image.uri,
+          name: image.name,
+          type: image.type,
         });
-        await feedService.criarMomentoFormData(formData);
       }
+
+      await feedService.criarMomentoFormData(formData);
 
       Alert.alert('Sucesso', 'Momento publicado!');
       navigation.goBack();
     } catch (error) {
       console.error(error.response?.data || error);
-      Alert.alert('Erro', 'Não foi possível publicar o momento.');
+      Alert.alert('Erro', `Não foi possível publicar o momento: ${JSON.stringify(error.response?.data)}`);
     } finally {
       setIsPublishing(false);
     }
@@ -122,21 +123,21 @@ const MomentCreateScreen = () => {
           multiline
         />
 
-        <TouchableOpacity style={styles.imagePickerButton} onPress={pickImages}>
+        <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
           <MaterialCommunityIcons name="image-plus" size={24} color={theme.colors.primary} />
-          <Text style={styles.imagePickerButtonText}>Adicionar Fotos</Text>
+          <Text style={styles.imagePickerButtonText}>Adicionar Foto</Text>
         </TouchableOpacity>
 
-        <View style={styles.previewContainer}>
-          {images.map((img, idx) => (
-            <View key={idx} style={styles.previewWrapper}>
-              <Image source={{ uri: img.uri }} style={styles.previewImage} />
-              <TouchableOpacity style={styles.removeImageButton} onPress={() => removeImage(idx)}>
+        {image && (
+          <View style={styles.previewContainer}>
+            <View style={styles.previewWrapper}>
+              <Image source={{ uri: image.uri }} style={styles.previewImage} />
+              <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
                 <MaterialCommunityIcons name="close-circle" size={24} color={theme.colors.error} />
               </TouchableOpacity>
             </View>
-          ))}
-        </View>
+          </View>
+        )}
       </View>
 
       <TouchableOpacity style={styles.card} onPress={() => setShowTurmaModal(true)}>
@@ -202,8 +203,8 @@ const styles = StyleSheet.create({
 
   previewContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.spacing.m },
   previewWrapper: { position: 'relative', marginRight: theme.spacing.s, marginBottom: theme.spacing.s },
-  previewImage: { width: 80, height: 80, borderRadius: theme.shape.borderRadiusSmall },
-  removeImageButton: { position: 'absolute', top: -8, right: -8, backgroundColor: theme.colors.card, borderRadius: 12 },
+  previewImage: { width: 100, height: 100, borderRadius: theme.shape.borderRadiusSmall },
+  removeImageButton: { position: 'absolute', top: -8, right: -8, backgroundColor: 'rgba(255, 255, 255, 0.8)', borderRadius: 12 },
   
   selectButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   selectButtonText: { ...theme.typography.body, color: theme.colors.textSecondary, marginLeft: theme.spacing.m, flex: 1 },
